@@ -1,8 +1,9 @@
+//preston was here
 #include <pthread.h>
 #include <stdio.h>
 #include <stdlib.h>
 
-void* helloThread();
+void* jacobi(void* arguments);
 void readInValues(double (*mtx)[4]);
 
 //Lab computers have 8 threads total
@@ -25,7 +26,7 @@ int main (int argc, const char* argv[]){
     const char *message1 = "Thread 1";
     const char *message2 = "Thread 2";
     //Array that contains arguments
-    
+    int threadArgs[2] = {1, 8};
 
     //Pass a number associated with each thread
     int num1 = 1;
@@ -35,14 +36,14 @@ int main (int argc, const char* argv[]){
     //As each thread is filling in numbers they should be checking the difference between the current number they are adding and the same position on the old matrix
 
 
-    num1 = pthread_create(&thread1, NULL, helloThread, &num1);
-    if(iret1){
+    num1 = pthread_create(&thread1, NULL, jacobi, &threadArgs);
+    if(num1){
         fprintf(stderr, "Error - pthread_create() return code: %d\n", num1);
         exit(EXIT_FAILURE);
     }
 
-    num2 = pthread_create( &thread2, NULL, helloThread, &num2);
-    if(iret2)
+    num2 = pthread_create( &thread2, NULL, jacobi, &threadArgs);
+    if(num2)
     {
         fprintf(stderr,"Error - pthread_create() return code: %d\n", num2);
         exit(EXIT_FAILURE);
@@ -85,8 +86,13 @@ for (i = 1; i < 1023; i++){
 }
 */
 
-void* jacobi(int* noth, int* numT){
-    printf("Hello other thread %d\n", *num);
+void* jacobi(void* arguments){
+    int successNum = 1;
+    void* successReturn = &successNum;
+
+
+
+    return successReturn;
 }
 
 void readInValues(double (*mtx)[4]){
