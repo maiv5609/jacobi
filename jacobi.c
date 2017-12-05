@@ -1,3 +1,4 @@
+//preston was here
 #include <pthread.h>
 #include <stdio.h>
 #include <stdlib.h>
@@ -25,7 +26,7 @@ int main (int argc, const char* argv[]){
     const char *message1 = "Thread 1";
     const char *message2 = "Thread 2";
     //Array that contains arguments
-    
+
 
     //Pass a number associated with each thread
     int num1 = 1;
