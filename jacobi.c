@@ -1,13 +1,22 @@
-//preston was here
 #include <pthread.h>
 #include <stdio.h>
 #include <stdlib.h>
 
-void* jacobi(void* arguments);
+void* jacobi(void* ptr);
 void readInValues(double (*mtx)[4]);
 
-double (* mtx) [4];
-double (* tmp) [4];
+#define NOTH 1
+
+typedef
+struct arg_st{
+    double (* mtxLEFT) [4];
+    double (* mtxRIGHT) [4];
+    int n;
+    int t;
+    int j;
+} arg_t;
+
+
 //Lab computers have 8 threads total
 int main (int argc, const char* argv[]){
 
@@ -20,64 +29,38 @@ int main (int argc, const char* argv[]){
     /*
     *Read in array, might need to move this to another function
     */
+    double (* mtxL) [4] = malloc (4* 4* sizeof (double));
+    double (* mtxR) [4] = malloc (4* 4* sizeof (double));
+    pthread_t thd[NOTH];
+    arg_t args[NOTH];
+    int j;
 
-    //Make space for the arrays
-    mtx = malloc (4* 4* sizeof (double));
-    tmp = malloc (4* 4* sizeof (double));
+    readInValues(mtxL);
+    readInValues(mtxR);
 
-
-    readInValues(mtx);
-    readInValues(tmp);
-
-
-    pthread_t thread1, thread2;
-    const char *message1 = "Thread 1";
-    const char *message2 = "Thread 2";
-    //Array that contains arguments
-    int threadArgs[2] = {1, 8};
-    int done = 1;
-    //Pass a number associated with each thread
-    int num1 = 1;
-    int num2 = 2;
-
-    //Could make a flag that is changed when any of the threads find that the difference is too high
-    //As each thread is filling in numbers they should be checking the difference between the current number they are adding and the same position on the old matrix
-
-    //while loop checks for iteration
-    while(done != 0){
-        num1 = pthread_create(&thread1, NULL, jacobi, &threadArgs);
-        if(num1){
-            fprintf(stderr, "Error - pthread_create() return code: %d\n", num1);
-            exit(EXIT_FAILURE);
+    for(j = 0; j < NOTH; j++){
+        args[j].mtxLEFT = mtxL;
+        args[j].mtxRIGHT = mtxR;
+        args[j].n = 4;
+        args[j].t = NOTH;
+        args[j].j = j;
+        if(pthread_create(&thd[j], NULL, &jacobi, &args[j])){
+            perror("pthread_create");
+            return -1;
         }
-
-        num2 = pthread_create(&thread2, NULL, jacobi, &threadArgs);
-        if(num2)
-        {
-            fprintf(stderr,"Error - pthread_create() return code: %d\n", num2);
-            exit(EXIT_FAILURE);
-        }
-
-        dprintf(2, "pthread_create() for thread 1 returns: %d\n", num1);
-        dprintf(2, "pthread_create() for thread 2 returns: %d\n", num2);
-
-
-        //Join threads together after work is done
-        pthread_join(thread1, NULL);
-        pthread_join(thread2, NULL);
     }
 
+    void* unused;
 
+    for(j = 0; j < NOTH; j++){
+        pthread_join(thd[j], &unused);
+    }
 
-    printf("Arr[1][1]: %lf\n", mtx[1][1]);
+    free(mtxL);
+    free(mtxR);
+    return 0;
 
-    exit(EXIT_SUCCESS);
-    //read in the input matrix
-    //Will have to decide on how to handle threads
-    //Use monitors or sem
-    //I assume in either case we would have to use a barrier?
 }
-
 
 /*
 Ideas:
@@ -87,29 +70,24 @@ Calc by row
 
 */
 
-void* jacobi(void* arguments){
-    int successNum = 1;
-    void* successReturn = &successNum;
+void* jacobi(void* ptr){
+    arg_t* args = (arg_t*)(ptr);
+    int i;
+    int j;
+    int from = (args->j*args->n)/args->t;
+    int to = ((args->j+1)*args->n)/args->t;
 
-    int** args = (int**) arguments;
-
-    int noth = (int)args[1];
-    printf("noth: %d\n", noth);
-
-    for (int i = 1; i < 3; i++){
-        for (int j = 1; j < 3; j++){
-            mtx[i][j] = (tmp[i-1][j] +
-            tmp[i+1][j] +
-            tmp[i][j-1] +
-            tmp[i][j+1]) / 4.0;
-            //Check for difference at every value
-            printf("during change Arr[i][j]: %lf\n", mtx[i][j]);
+    for(i = from; i < to; i++){
+        for(j = 0; j < 3; j++){
+            args->mtxLEFT[i][j] = (args->mtxRIGHT[i-1][j] +
+                        args->mtxRIGHT[i+1][j] +
+                        args->mtxRIGHT[i][j-1] +
+                        args->mtxRIGHT[i][j+1]) / 4.0;
+            printf("mtxLEFT[%d][%d]: %lf\n", i, j , args->mtxLEFT[i][j]);
         }
     }
 
-    printf("in function Arr[0][0]: %lf\n", mtx[0][0]);
-    printf("in function Arr[1][1]: %lf\n", mtx[1][1]);
-    return successReturn;
+
 }
 
 void readInValues(double (*mtx)[4]){
@@ -120,8 +98,8 @@ void readInValues(double (*mtx)[4]){
             exit(1);
         }
 
-        for (int i = 0; i < 4; i++){
-            for (int j = 0; j < 4; j++){
+        for (int i = 0; i < 3; i++){
+            for (int j = 0; j < 3; j++){
                 fscanf(inputFile, "%lf", &mtx[i][j]);
             }
         }
