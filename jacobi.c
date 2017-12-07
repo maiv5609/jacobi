@@ -7,11 +7,7 @@
 #define NOTH 2
 #define DELTA .1
 
-void* jacobi(void* ptr);
-void readInValues(double (*mtx)[SIZE]);
-
-typedef
-struct arg_st{
+typedef struct arg_st{
     double (* mtxLEFT) [SIZE];
     double (* mtxRIGHT) [SIZE];
     int n;
@@ -19,6 +15,21 @@ struct arg_st{
     int j;
 } arg_t;
 
+typedef struct barrier_st{
+    int noth;
+    pthread_cond_t ready;
+    pthread_cond_t full;
+    pthread_mutex_t mtx;
+    int waiting;
+    int leaving;
+} barrier;
+
+void* jacobi(void* ptr);
+void readInValues(double (*mtx)[SIZE]);
+barrier* barrier_new (int noth);
+void barrier_enter(barrier* b);
+
+barrier threadBarrier;
 
 //Lab computers have 8 threads total
 int main (int argc, const char* argv[]){
@@ -37,6 +48,7 @@ int main (int argc, const char* argv[]){
     readInValues(mtxL);
     readInValues(mtxR);
 
+    barrier_new(NOTH);
 
     for(j = 0; j < NOTH; j++){
         args[j].mtxLEFT = mtxL;
@@ -88,8 +100,8 @@ void* jacobi(void* ptr){
     printf("to: %d thread: %d\n" , to - 1, args->j);
 
     while (!done){
-        max = 0;
 
+        max = 0;
         for(int i = from; i < to; i++){
             for(int j = 1; j < SIZE-1; j++){
                 double prev = args->mtxLEFT[i][j];
@@ -98,6 +110,7 @@ void* jacobi(void* ptr){
                             args->mtxRIGHT[i][j-1] +
                             args->mtxRIGHT[i][j+1]) / 4.0;
                 printf("mtxLEFT[%d][%d]: %.2lf\n", i, j , args->mtxLEFT[i][j]);
+                barrier_enter(&threadBarrier);
                 test = args->mtxLEFT[i][j] - prev;
                 if (test > max)
                     max = test;
@@ -105,14 +118,33 @@ void* jacobi(void* ptr){
                 //printf("max: %lf\n", max);
             }
         }
-
         if (max < DELTA)
-            done = 1;
-        else {
-            double (* temp)[SIZE] = args->mtxLEFT;
-            args->mtxLEFT = args->mtxRIGHT;
-            args->mtxRIGHT = temp;
+             done = 1;
+
+        max = 0;
+        for(int i = from; i < to; i++){
+            for(int j = 1; j < SIZE-1; j++){
+                double prev = args->mtxRIGHT[i][j];
+                args->mtxRIGHT[i][j] = (args->mtxLEFT[i-1][j] +
+                            args->mtxLEFT[i+1][j] +
+                            args->mtxLEFT[i][j-1] +
+                            args->mtxLEFT[i][j+1]) / 4.0;
+                printf("mtxRIGHT[%d][%d]: %.2lf\n", i, j , args->mtxRIGHT[i][j]);
+                test = args->mtxRIGHT[i][j] - prev;
+                if (test > max)
+                    max = test;
+
+                //printf("max: %lf\n", max);
+            }
         }
+        //barrier_enter(&threadBarrier);
+        if (max < DELTA)
+             done = 1;
+        // else {//swap
+        //     double (* temp)[SIZE] = args->mtxLEFT;
+        //     args->mtxLEFT = args->mtxRIGHT;
+        //     args->mtxRIGHT = temp;
+        // }
 
 
     }
@@ -135,7 +167,7 @@ void readInValues(double (*mtx)[SIZE]){
         }
 
         for (int i = 0; i <= SIZE-1; i++){
-            printf("row %d: ", i);
+            //printf("row %d: ", i);
             for (int j = 0; j <= SIZE-1; j++){
                 printf("%0.lf ", mtx[i][j]);
             }
@@ -146,29 +178,24 @@ void readInValues(double (*mtx)[SIZE]){
         fclose(inputFile);
 }
 
-typedef struct barrier_st{
-    int noth;
-    pthread_cond_t ready;
-    pthread_cond_t full;
-    pthread_mutex_t mtx;
-    int waiting;
-    int leaving;
-} barrier;
-
 barrier* barrier_new (int noth){
     barrier* b = malloc(sizeof(barrier));
     b->noth = noth;
-
+    b->ready = (pthread_cond_t)PTHREAD_COND_INITIALIZER;
+    b->full = (pthread_cond_t)PTHREAD_COND_INITIALIZER;
+    b->mtx = (pthread_mutex_t)PTHREAD_MUTEX_INITIALIZER;
+    b->waiting = 0;
+    b->leaving = 0;
     return b;
 }
 
 void barrier_enter(barrier* b){
     assert(b != NULL);
     pthread_mutex_lock(&(b->mtx));
-    while (b->leaving > 0)
+    while (b->leaving > 0){
         pthread_cond_wait(&(b->ready), &(b->mtx));
         b->waiting++;
-
+    }
     if(b->waiting != b->noth){
         pthread_cond_wait(&(b->full), &(b->mtx));
         b->leaving--;;
