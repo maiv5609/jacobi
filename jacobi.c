@@ -3,9 +3,9 @@
 #include <stdlib.h>
 #include <assert.h>
 
-#define SIZE 4
-#define NOTH 2
-#define DELTA .1
+#define SIZE 1024
+#define NOTH 1
+#define DELTA .001
 
 typedef struct arg_st{
     double (* mtxLEFT) [SIZE];
@@ -29,6 +29,7 @@ void readInValues(double (*mtx)[SIZE]);
 barrier* barrier_new (int noth);
 void barrier_enter(barrier* b);
 
+//pthread_barrier_t threadBarrier;
 barrier threadBarrier;
 
 //Lab computers have 8 threads total
@@ -48,7 +49,8 @@ int main (int argc, const char* argv[]){
     readInValues(mtxL);
     readInValues(mtxR);
 
-    barrier_new(NOTH);
+    threadBarrier = *barrier_new(NOTH);
+    //pthread_barrier_init(&threadBarrier,NULL, NOTH);
 
     for(j = 0; j < NOTH; j++){
         args[j].mtxLEFT = mtxL;
@@ -67,6 +69,11 @@ int main (int argc, const char* argv[]){
     for(j = 0; j < NOTH; j++){
         pthread_join(thd[j], &unused);
     }
+
+    //pthread_barrier_destroy(&threadBarrier);
+
+    printf("mtxR[1][1]: %lf out of thread\n", mtxR[1][1]);
+    printf("mtxL[1][1]: %lf out of thread\n", mtxL[1][1]);
 
     free(mtxL);
     free(mtxR);
@@ -101,7 +108,9 @@ void* jacobi(void* ptr){
 
     while (!done){
 
+        barrier_enter(&threadBarrier);
         max = 0;
+
         for(int i = from; i < to; i++){
             for(int j = 1; j < SIZE-1; j++){
                 double prev = args->mtxLEFT[i][j];
@@ -109,8 +118,7 @@ void* jacobi(void* ptr){
                             args->mtxRIGHT[i+1][j] +
                             args->mtxRIGHT[i][j-1] +
                             args->mtxRIGHT[i][j+1]) / 4.0;
-                printf("mtxLEFT[%d][%d]: %.2lf\n", i, j , args->mtxLEFT[i][j]);
-                barrier_enter(&threadBarrier);
+                //printf("mtxLEFT[%d][%d]: %.2lf\n", i, j , args->mtxLEFT[i][j]);
                 test = args->mtxLEFT[i][j] - prev;
                 if (test > max)
                     max = test;
@@ -121,6 +129,7 @@ void* jacobi(void* ptr){
         if (max < DELTA)
              done = 1;
 
+        barrier_enter(&threadBarrier);
         max = 0;
         for(int i = from; i < to; i++){
             for(int j = 1; j < SIZE-1; j++){
@@ -129,7 +138,7 @@ void* jacobi(void* ptr){
                             args->mtxLEFT[i+1][j] +
                             args->mtxLEFT[i][j-1] +
                             args->mtxLEFT[i][j+1]) / 4.0;
-                printf("mtxRIGHT[%d][%d]: %.2lf\n", i, j , args->mtxRIGHT[i][j]);
+                //printf("mtxRIGHT[%d][%d]: %.2lf\n", i, j , args->mtxRIGHT[i][j]);
                 test = args->mtxRIGHT[i][j] - prev;
                 if (test > max)
                     max = test;
@@ -137,7 +146,7 @@ void* jacobi(void* ptr){
                 //printf("max: %lf\n", max);
             }
         }
-        //barrier_enter(&threadBarrier);
+
         if (max < DELTA)
              done = 1;
         // else {//swap
@@ -146,14 +155,16 @@ void* jacobi(void* ptr){
         //     args->mtxRIGHT = temp;
         // }
 
-
     }
+    barrier_enter(&threadBarrier);
 
+    //printf("mtxRIGHT[10][10]: %lf in thread\n", args->mtxRIGHT[10][10]);
+    //printf("mtxLEFT[10][10]: %lf in thread\n", args->mtxLEFT[10][10]);
     return NULL;
 }
 
 void readInValues(double (*mtx)[SIZE]){
-        FILE* inputFile = fopen("./testInput", "r");
+        FILE* inputFile = fopen("./input.mtx", "r");
 
         if(inputFile == NULL){
             fprintf(stderr, "Opening input file failed\n");
@@ -169,9 +180,9 @@ void readInValues(double (*mtx)[SIZE]){
         for (int i = 0; i <= SIZE-1; i++){
             //printf("row %d: ", i);
             for (int j = 0; j <= SIZE-1; j++){
-                printf("%0.lf ", mtx[i][j]);
+                //printf("%0.lf ", mtx[i][j]);
             }
-            printf("\n");
+            //printf("\n");
         }
 
 
@@ -192,13 +203,15 @@ barrier* barrier_new (int noth){
 void barrier_enter(barrier* b){
     assert(b != NULL);
     pthread_mutex_lock(&(b->mtx));
+
     while (b->leaving > 0){
         pthread_cond_wait(&(b->ready), &(b->mtx));
-        b->waiting++;
     }
+    b->waiting++;
+
     if(b->waiting != b->noth){
         pthread_cond_wait(&(b->full), &(b->mtx));
-        b->leaving--;;
+        b->leaving--;
     }
     else{
         b->leaving = b->waiting;
@@ -209,6 +222,7 @@ void barrier_enter(barrier* b){
 
     if(b->leaving == 0)
         pthread_cond_broadcast(&(b->ready));
+
     pthread_mutex_unlock(&(b->mtx));
 
 }
