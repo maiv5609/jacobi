@@ -5,7 +5,7 @@
 
 #define SIZE 1024
 #define NOTH 1
-#define DELTA .001
+#define DELTA 0.001
 
 typedef struct arg_st{
     double (* mtxLEFT) [SIZE];
@@ -34,9 +34,6 @@ barrier threadBarrier;
 
 //Lab computers have 8 threads total
 int main (int argc, const char* argv[]){
-
-/* WORKNOTE:
-
     /*
     *Read in array, might need to move this to another function
     */
@@ -50,7 +47,6 @@ int main (int argc, const char* argv[]){
     readInValues(mtxR);
 
     threadBarrier = *barrier_new(NOTH);
-    //pthread_barrier_init(&threadBarrier,NULL, NOTH);
 
     for(j = 0; j < NOTH; j++){
         args[j].mtxLEFT = mtxL;
@@ -58,19 +54,15 @@ int main (int argc, const char* argv[]){
         args[j].n = SIZE;
         args[j].t = NOTH;
         args[j].j = j;
-        if(pthread_create(&thd[j], NULL, &jacobi, &args[j])){
-            perror("pthread_create");
-            return -1;
-        }
+        pthread_create(&thd[j], NULL, &jacobi, &args[j]);
     }
 
     void* unused;
 
     for(j = 0; j < NOTH; j++){
+        //printf("Joining\n");
         pthread_join(thd[j], &unused);
     }
-
-    //pthread_barrier_destroy(&threadBarrier);
 
     printf("mtxR[1][1]: %lf out of thread\n", mtxR[1][1]);
     printf("mtxL[1][1]: %lf out of thread\n", mtxL[1][1]);
@@ -94,7 +86,7 @@ void* jacobi(void* ptr){
     int i;
     int j;
     int from = (args->j*args->n)/args->t;
-    int to = ((args->j+1)*args->n)/args->t - args->j;
+    int to = ((args->j+1)*args->n)/args->t;
     if (from == 0)
         from = 1;
     if (to == args->n)
@@ -113,7 +105,7 @@ void* jacobi(void* ptr){
 
         for(int i = from; i < to; i++){
             for(int j = 1; j < SIZE-1; j++){
-                double prev = args->mtxLEFT[i][j];
+                double prev = args->mtxRIGHT[i][j];
                 args->mtxLEFT[i][j] = (args->mtxRIGHT[i-1][j] +
                             args->mtxRIGHT[i+1][j] +
                             args->mtxRIGHT[i][j-1] +
@@ -133,7 +125,7 @@ void* jacobi(void* ptr){
         max = 0;
         for(int i = from; i < to; i++){
             for(int j = 1; j < SIZE-1; j++){
-                double prev = args->mtxRIGHT[i][j];
+                double prev = args->mtxLEFT[i][j];
                 args->mtxRIGHT[i][j] = (args->mtxLEFT[i-1][j] +
                             args->mtxLEFT[i+1][j] +
                             args->mtxLEFT[i][j-1] +
@@ -149,11 +141,6 @@ void* jacobi(void* ptr){
 
         if (max < DELTA)
              done = 1;
-        // else {//swap
-        //     double (* temp)[SIZE] = args->mtxLEFT;
-        //     args->mtxLEFT = args->mtxRIGHT;
-        //     args->mtxRIGHT = temp;
-        // }
 
     }
     barrier_enter(&threadBarrier);
@@ -177,15 +164,6 @@ void readInValues(double (*mtx)[SIZE]){
             }
         }
 
-        for (int i = 0; i <= SIZE-1; i++){
-            //printf("row %d: ", i);
-            for (int j = 0; j <= SIZE-1; j++){
-                //printf("%0.lf ", mtx[i][j]);
-            }
-            //printf("\n");
-        }
-
-
         fclose(inputFile);
 }
 
@@ -202,6 +180,8 @@ barrier* barrier_new (int noth){
 
 void barrier_enter(barrier* b){
     assert(b != NULL);
+    // printf("Waiting: %d\n", b->waiting);
+    // printf("Leaving: %d\n\n", b->leaving);
     pthread_mutex_lock(&(b->mtx));
 
     while (b->leaving > 0){
@@ -210,6 +190,7 @@ void barrier_enter(barrier* b){
     b->waiting++;
 
     if(b->waiting != b->noth){
+        // printf("Start Waiting\n");
         pthread_cond_wait(&(b->full), &(b->mtx));
         b->leaving--;
     }
