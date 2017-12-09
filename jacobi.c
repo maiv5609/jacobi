@@ -1,3 +1,9 @@
+/* Preston Carroll
+ * Victor Mai
+ * CSCI 347, Assignment 5
+ * Multi threaded application of jacobi algorithm on variable sized matrix
+ */
+
 #include <pthread.h>
 #include <stdio.h>
 #include <stdlib.h>
@@ -5,7 +11,7 @@
 #include <string.h>
 
 #define SIZE 1024
-#define NOTH 8
+#define NOTH 7
 #define DELTA 0.00001
 
 typedef struct arg_st{
@@ -26,23 +32,29 @@ typedef struct barrier_st{
     int leaving;
 } barrier;
 
+/* jacobi
+ * thread body that applies the jacobi algorithm to our left and right matrix, alternating between the two.
+ * will skip the first and last row when calculating the values since the border is already known
+ */
 void* jacobi(void* ptr);
 void readInValues(double (*mtx)[SIZE]);
+/* barrier_new
+ * initalizes our barrier after being given a number of threads that is defined at the top of our program
+ */
 barrier* barrier_new (int noth);
+/* barrier_enter
+ * implements our barrier logic
+ */
 void barrier_enter(barrier* b);
 
-//pthread_barrier_t threadBarrier;
+//single barrier used across all threads
 barrier threadBarrier;
 
-//Lab computers have 8 threads total
 int main (int argc, const char* argv[]){
-    /*
-    *Read in array, might need to move this to another function
-    */
     double (* mtxL) [SIZE] = malloc (SIZE* SIZE* sizeof (double));
     double (* mtxR) [SIZE] = malloc (SIZE* SIZE* sizeof (double));
     double (* maxes) = malloc (SIZE * sizeof(double));
-    //memset(maxes, 0, sizeof (maxes));
+
     pthread_t thd[NOTH];
     arg_t args[NOTH];
     int j;
@@ -51,7 +63,6 @@ int main (int argc, const char* argv[]){
     readInValues(mtxR);
 
     threadBarrier = *barrier_new(NOTH);
-    //pthread_barrier_init(&threadBarrier, NULL, NOTH);
 
     for(j = 0; j < NOTH; j++){
         args[j].mtxLEFT = mtxL;
@@ -66,28 +77,17 @@ int main (int argc, const char* argv[]){
     void* unused;
 
     for(j = 0; j < NOTH; j++){
-        //printf("Joining\n");
         pthread_join(thd[j], &unused);
     }
 
-    printf("mtxR[1][1]: %.10lf out of thread\n", mtxR[1][1]);
-    printf("mtxL[1][1]: %.10lf out of thread\n", mtxL[1][1]);
-
+    printf("Done\n");
     free(mtxL);
     free(mtxR);
     return 0;
-
 }
 
-/*
-Ideas:
-Calc by row
-1.) start each thread with an offset equal to their number
-2.) start each thread at their row number and increment by number of threads
 
-*/
-
-void* jacobi(void* ptr){
+void* jacobi(void* ptr){barrier_enter(&threadBarrier);
     arg_t* args = (arg_t*)(ptr);
     int i;
     int j;
@@ -101,12 +101,7 @@ void* jacobi(void* ptr){
     double test;
     int done = 0;
 
-    printf("from: %d thread: %d\n" , from, args->j);
-    printf("to: %d thread: %d\n" , to - 1, args->j);
-
     while (!done){
-
-
         highestMax = 0.0;
         for(int i = from; i < to; i++){
             for(int j = 1; j < SIZE-1; j++){
@@ -129,12 +124,9 @@ void* jacobi(void* ptr){
             done = 1;
         barrier_enter(&threadBarrier);
 
+
         for(int i = 0; i < NOTH; i++)
             args->maxArr[i] = 0.0;
-
-
-
-
         highestMax = 0.0;
         for(int i = from; i < to; i++){
             for(int j = 1; j < SIZE-1; j++){
@@ -159,12 +151,8 @@ void* jacobi(void* ptr){
 
         for(int i = 0; i < NOTH; i++)
             args->maxArr[i] = 0.0;
-
-
     }
-
     barrier_enter(&threadBarrier);
-
     return NULL;
 }
 
@@ -181,7 +169,6 @@ void readInValues(double (*mtx)[SIZE]){
                 fscanf(inputFile, "%lf", &mtx[i][j]);
             }
         }
-
         fclose(inputFile);
 }
 
@@ -198,8 +185,6 @@ barrier* barrier_new (int noth){
 
 void barrier_enter(barrier* b){
     assert(b != NULL);
-    // printf("Waiting: %d\n", b->waiting);
-    // printf("Leaving: %d\n\n", b->leaving);
     pthread_mutex_lock(&(b->mtx));
 
     while (b->leaving > 0){
@@ -208,7 +193,6 @@ void barrier_enter(barrier* b){
     b->waiting++;
 
     if(b->waiting != b->noth){
-        // printf("Start Waiting\n");
         pthread_cond_wait(&(b->full), &(b->mtx));
         b->leaving--;
     }
@@ -218,47 +202,9 @@ void barrier_enter(barrier* b){
         b->leaving--;
         pthread_cond_broadcast(&(b->full));
     }
-
     if(b->leaving == 0)
         pthread_cond_broadcast(&(b->ready));
 
     pthread_mutex_unlock(&(b->mtx));
 
 }
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-//
