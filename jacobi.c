@@ -2,14 +2,16 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include <assert.h>
+#include <string.h>
 
 #define SIZE 1024
-#define NOTH 1
+#define NOTH 2
 #define DELTA 0.001
 
 typedef struct arg_st{
     double (* mtxLEFT) [SIZE];
     double (* mtxRIGHT) [SIZE];
+    double (* maxArr) [NOTH];
     int n;
     int t;
     int j;
@@ -29,8 +31,8 @@ void readInValues(double (*mtx)[SIZE]);
 barrier* barrier_new (int noth);
 void barrier_enter(barrier* b);
 
-//pthread_barrier_t threadBarrier;
-barrier threadBarrier;
+pthread_barrier_t threadBarrier;
+//barrier threadBarrier;
 
 //Lab computers have 8 threads total
 int main (int argc, const char* argv[]){
@@ -39,6 +41,8 @@ int main (int argc, const char* argv[]){
     */
     double (* mtxL) [SIZE] = malloc (SIZE* SIZE* sizeof (double));
     double (* mtxR) [SIZE] = malloc (SIZE* SIZE* sizeof (double));
+    double maxes[NOTH] = {0};
+    //memset(maxes, 0, sizeof (maxes));
     pthread_t thd[NOTH];
     arg_t args[NOTH];
     int j;
@@ -46,11 +50,13 @@ int main (int argc, const char* argv[]){
     readInValues(mtxL);
     readInValues(mtxR);
 
-    threadBarrier = *barrier_new(NOTH);
+    //threadBarrier = *barrier_new(NOTH);
+    pthread_barrier_init(&threadBarrier, NULL, NOTH);
 
     for(j = 0; j < NOTH; j++){
         args[j].mtxLEFT = mtxL;
         args[j].mtxRIGHT = mtxR;
+        args[j].maxArr = &maxes;
         args[j].n = SIZE;
         args[j].t = NOTH;
         args[j].j = j;
@@ -91,7 +97,7 @@ void* jacobi(void* ptr){
         from = 1;
     if (to == args->n)
         to = args->n - 1;
-    double max;
+    double highestMax;
     double test;
     int done = 0;
 
@@ -100,8 +106,8 @@ void* jacobi(void* ptr){
 
     while (!done){
 
-        barrier_enter(&threadBarrier);
-        max = 0;
+
+        highestMax = 0;
 
         for(int i = from; i < to; i++){
             for(int j = 1; j < SIZE-1; j++){
@@ -112,17 +118,23 @@ void* jacobi(void* ptr){
                             args->mtxRIGHT[i][j+1]) / 4.0;
                 //printf("mtxLEFT[%d][%d]: %.2lf\n", i, j , args->mtxLEFT[i][j]);
                 test = args->mtxLEFT[i][j] - prev;
-                if (test > max)
-                    max = test;
+                if (test > args->maxArr[j])
+                    args->maxArr[j] = test;
 
                 //printf("max: %lf\n", max);
             }
         }
-        if (max < DELTA)
+        pthread_barrier_wait(&threadBarrier);
+        //mutex lock
+        for(int i = 0; i < NOTH; i++){
+            if (highestMax < args->maxArr[i])
+                highestMax = args->maxArr[i];
+        }
+        if (highestMax < DELTA)
              done = 1;
 
-        barrier_enter(&threadBarrier);
-        max = 0;
+        //barrier_enter(&threadBarrier);
+        highestMax = 0;
         for(int i = from; i < to; i++){
             for(int j = 1; j < SIZE-1; j++){
                 double prev = args->mtxLEFT[i][j];
@@ -132,18 +144,24 @@ void* jacobi(void* ptr){
                             args->mtxLEFT[i][j+1]) / 4.0;
                 //printf("mtxRIGHT[%d][%d]: %.2lf\n", i, j , args->mtxRIGHT[i][j]);
                 test = args->mtxRIGHT[i][j] - prev;
-                if (test > max)
-                    max = test;
+                if (test > args->maxArr[j])
+                    args->maxArr[j] = test;
 
                 //printf("max: %lf\n", max);
             }
         }
-
-        if (max < DELTA)
+        pthread_barrier_wait(&threadBarrier);
+        for(int i = 0; i < NOTH; i++){
+            if (highestMax < args->maxArr[i])
+                highestMax = args->maxArr[i];
+        }
+        if (highestMax < DELTA)
              done = 1;
 
+        //barrier_enter(&threadBarrier);
+
     }
-    barrier_enter(&threadBarrier);
+    //barrier_enter(&threadBarrier);
 
     //printf("mtxRIGHT[10][10]: %lf in thread\n", args->mtxRIGHT[10][10]);
     //printf("mtxLEFT[10][10]: %lf in thread\n", args->mtxLEFT[10][10]);
